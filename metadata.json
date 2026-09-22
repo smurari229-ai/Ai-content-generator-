@@ -1,0 +1,6 @@
+{
+  "name": "AI Monetization & Task Planner",
+  "description": "Discover actionable AI earning blueprints, strategies, and workflows, and sync step-by-step action roadmaps directly into Google Tasks.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
