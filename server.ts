@@ -1387,5 +1387,10 @@ async function startServer() {
   });
 }
 
-startServer();
+// Vercel invokes the exported Express app through api/[...path].ts.
+// Keep the local Vite/Express listener for development and non-Vercel hosting.
+if (!process.env.VERCEL) {
+  void startServer();
+}
 
+export default app;
