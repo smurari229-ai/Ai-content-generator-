@@ -306,14 +306,26 @@ export const AIContentGeneratorModal: React.FC<AIContentGeneratorModalProps> = (
     }
   };
 
-  // 100% FREE AI Video Maker Blueprint Generation Handler
+  // Generate a usable storyboard locally first. AI enhancement is optional so a
+  // missing API key or slow server can never leave the user stuck on a spinner.
   const handleGenerateFreeVideoPlan = async () => {
     if (!result) return;
     stopAllTts();
 
+    const fallbackBlueprint = generateClientFallbackVideoBlueprint(
+      result.topic,
+      result.contentType,
+      result.language,
+      result.script,
+      result.thumbnailPrompt
+    );
+
+    // Show five usable scenes immediately, even when Gemini is not configured.
     setVideoMakerState({
-      status: 'generating',
+      status: 'ready',
+      blueprint: fallbackBlueprint,
     });
+    setVideoStudioTab('storyboard');
 
     try {
       const res = await safeFetchJson<{
@@ -331,44 +343,22 @@ export const AIContentGeneratorModal: React.FC<AIContentGeneratorModalProps> = (
           language: result.language,
           titles: result.titles,
         }),
-      });
+      }, 0);
 
-      if (res.ok && res.data?.success && res.data?.blueprint) {
+      if (res.ok && res.data?.success && res.data?.blueprint?.scenes?.length) {
         setVideoMakerState({
           status: 'ready',
           blueprint: res.data.blueprint,
         });
-        setVideoStudioTab('studio');
-        return;
+      } else {
+        console.warn(
+          'AI storyboard unavailable; keeping the ready local storyboard.',
+          res.error || 'No valid scenes returned'
+        );
       }
-
-      console.warn('Free video blueprint API fallback triggered:', res.error);
-      const fallbackBlueprint = generateClientFallbackVideoBlueprint(
-        result.topic,
-        result.contentType,
-        result.language,
-        result.script,
-        result.thumbnailPrompt
-      );
-      setVideoMakerState({
-        status: 'ready',
-        blueprint: fallbackBlueprint,
-      });
-      setVideoStudioTab('studio');
     } catch (err: any) {
-      console.warn('Free Video Maker error, using resilient client generator:', err);
-      const fallbackBlueprint = generateClientFallbackVideoBlueprint(
-        result.topic,
-        result.contentType,
-        result.language,
-        result.script,
-        result.thumbnailPrompt
-      );
-      setVideoMakerState({
-        status: 'ready',
-        blueprint: fallbackBlueprint,
-      });
-      setVideoStudioTab('studio');
+      // The local storyboard is already visible; preserve it if AI is unavailable.
+      console.warn('AI storyboard enhancement failed; keeping local scenes:', err?.message || err);
     }
   };
 
