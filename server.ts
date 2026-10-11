@@ -9,7 +9,7 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
 // Lazy-initialize Gemini client
 let genAI: GoogleGenAI | null = null;
@@ -33,8 +33,9 @@ function getGenAI(): GoogleGenAI {
 
 // Fallback models in priority order for maximum availability & fast response (Free/Standard tier compatible)
 const CANDIDATE_MODELS = [
-  "gemini-3.7-flash",
-  "gemini-flash-latest",
+  // Keep these IDs aligned with the currently documented Gemini API model names.
+  "gemini-3.8-flash",
+  "gemini-3.6-flash",
   "gemini-3.1-flash-lite",
 ];
 
@@ -1386,5 +1387,10 @@ async function startServer() {
   });
 }
 
-startServer();
+// Vercel invokes the exported Express app through api/[...path].ts.
+// Keep the local Vite/Express listener for development and non-Vercel hosting.
+if (!process.env.VERCEL) {
+  void startServer();
+}
 
+export default app;
