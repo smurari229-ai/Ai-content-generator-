@@ -52,6 +52,8 @@ export const InAppVideoStudio: React.FC<InAppVideoStudioProps> = ({
   const [speechRate, setSpeechRate] = useState<number>(1.05);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordProgress, setRecordProgress] = useState<number>(0);
+  const [exportedVideoUrl, setExportedVideoUrl] = useState<string | null>(null);
+  const [exportedVideoFileName, setExportedVideoFileName] = useState<string | null>(null);
   const [selectedThemeStyle, setSelectedThemeStyle] = useState<'neon' | 'cyber' | 'gold' | 'cinematic'>('neon');
   const [showSettingsDrawer, setShowSettingsDrawer] = useState<boolean>(false);
   const [customSceneImages, setCustomSceneImages] = useState<Record<number, string>>({});
@@ -817,6 +819,8 @@ export const InAppVideoStudio: React.FC<InAppVideoStudioProps> = ({
 
     // Stop playback during export
     isPlayingRef.current = false;
+    setExportedVideoUrl(null);
+    setExportedVideoFileName(null);
     setIsPlaying(false);
     stopMusicLoop();
     stopVoiceover();
@@ -843,17 +847,21 @@ export const InAppVideoStudio: React.FC<InAppVideoStudioProps> = ({
         } catch (e) {}
       }
 
-      let mimeType = 'video/webm;codecs=vp9,opus';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm';
-      }
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/mp4';
-      }
+      // Prefer widely supported WebM codecs on mobile; let the browser choose if it
+      // does not expose isTypeSupported or reports no explicit MIME type support.
+      const mimeCandidates = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4',
+      ];
+      const mimeType = typeof MediaRecorder.isTypeSupported === 'function'
+        ? mimeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate))
+        : undefined;
 
       const recorder = new MediaRecorder(canvasStream, {
-        mimeType: MediaRecorder.isTypeSupported(mimeType) ? mimeType : undefined,
-        videoBitsPerSecond: 4000000
+        ...(mimeType ? { mimeType } : {}),
+        videoBitsPerSecond: 2500000
       });
 
       const recordedChunks: Blob[] = [];
@@ -863,10 +871,11 @@ export const InAppVideoStudio: React.FC<InAppVideoStudioProps> = ({
         }
       };
 
-      const exportPromise = new Promise<Blob>((resolve) => {
+      const exportPromise = new Promise<Blob>((resolve, reject) => {
+        recorder.onerror = () => reject(new Error('Browser video recorder failed'));
         recorder.onstop = () => {
-          const blob = new Blob(recordedChunks, { type: mimeType || 'video/webm' });
-          resolve(blob);
+          const actualMimeType = recorder.mimeType || mimeType || recordedChunks[0]?.type || 'video/webm';
+          resolve(new Blob(recordedChunks, { type: actualMimeType }));
         };
       });
 
@@ -897,7 +906,11 @@ export const InAppVideoStudio: React.FC<InAppVideoStudioProps> = ({
       recorder.stop();
 
       const finalBlob = await exportPromise;
+      if (!finalBlob.size) throw new Error('Video export produced an empty file');
       const url = URL.createObjectURL(finalBlob);
+      const extension = finalBlob.type.toLowerCase().includes('mp4') ? 'mp4' : 'webm';
+      setExportedVideoUrl(url);
+      setExportedVideoFileName(`ai_viral_video_${Date.now()}.${extension}`);
       setIsRecording(false);
       setRecordProgress(100);
 
@@ -907,15 +920,10 @@ export const InAppVideoStudio: React.FC<InAppVideoStudioProps> = ({
         origin: { y: 0.6 }
       });
 
-      // Trigger download
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `ai_viral_video_${Date.now()}.webm`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      showStudioToast('🎉 वीडियो सफलतापूर्वक डाउनलोड हो गया!', 'success');
+      // Do not auto-click a download after a long async recording: mobile browsers
+      // may block it because the original user gesture has expired. Show a real
+      // download button for the user to tap once the video is ready.
+      showStudioToast('वीडियो तैयार है — अब Save Video पर टैप करें।', 'success');
     } catch (err) {
       console.warn('Video export standard flow failed, triggering fallback poster export:', err);
       await fallbackExportKeyframes();
@@ -923,6 +931,25 @@ export const InAppVideoStudio: React.FC<InAppVideoStudioProps> = ({
       setIsRecording(false);
     }
   };
+
+  // Download after recording using a fresh user gesture (important on mobile browsers).
+  const handleDownloadExportedVideo = () => {
+    if (!exportedVideoUrl || !exportedVideoFileName) return;
+    const a = document.createElement('a');
+    a.href = exportedVideoUrl;
+    a.download = exportedVideoFileName;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showStudioToast('वीडियो डाउनलोड शुरू हो गया।', 'success');
+  };
+
+  useEffect(() => {
+    return () => {
+      if (exportedVideoUrl) URL.revokeObjectURL(exportedVideoUrl);
+    };
+  }, [exportedVideoUrl]);
 
   // Fallback: Export high resolution current canvas image
   const fallbackExportKeyframes = async () => {
@@ -1271,13 +1298,13 @@ export const InAppVideoStudio: React.FC<InAppVideoStudioProps> = ({
                 <button
                   type="button"
                   id="studio-export-video-btn"
-                  onClick={handleExportVideo}
+                  onClick={exportedVideoUrl ? handleDownloadExportedVideo : handleExportVideo}
                   disabled={isRecording}
                   className="px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-950/50 active:scale-95"
-                  title="पूर्ण वीडियो फ़ाइल (MP4/WebM) सीधे डाउनलोड करें"
+                  title={exportedVideoUrl ? "तैयार वीडियो सेव करें" : "वीडियो तैयार करें और फिर सेव करें"}
                 >
                   <Download className="w-4 h-4" />
-                  <span>Download Video</span>
+                  <span>{exportedVideoUrl ? 'Save Video' : 'Create Video'}</span>
                 </button>
               </div>
             </div>
