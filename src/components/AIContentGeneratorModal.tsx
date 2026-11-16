@@ -101,6 +101,7 @@ export const AIContentGeneratorModal: React.FC<AIContentGeneratorModalProps> = (
     status: 'idle',
   });
   const [videoStudioTab, setVideoStudioTab] = useState<'studio' | 'storyboard' | 'tools'>('studio');
+  const [storyboardSource, setStoryboardSource] = useState<'local' | 'gemini'>('local');
   const [activeTtsScene, setActiveTtsScene] = useState<number | null>(null);
   const [isTtsPlaying, setIsTtsPlaying] = useState<boolean>(false);
 
@@ -154,6 +155,7 @@ export const AIContentGeneratorModal: React.FC<AIContentGeneratorModalProps> = (
           status: 'ready',
           blueprint,
         });
+        setStoryboardSource('local');
         setVideoStudioTab('studio');
       }
     }
@@ -284,6 +286,7 @@ export const AIContentGeneratorModal: React.FC<AIContentGeneratorModalProps> = (
         status: 'ready',
         blueprint: matchedBlueprint,
       });
+      setStoryboardSource('local');
     } catch (err: any) {
       console.warn('Content Generation exception, using resilient client generator:', err);
       const fallbackData = generateClientFallbackContent(targetTopic, contentType, language);
@@ -301,6 +304,7 @@ export const AIContentGeneratorModal: React.FC<AIContentGeneratorModalProps> = (
         status: 'ready',
         blueprint: matchedBlueprint,
       });
+      setStoryboardSource('local');
     } finally {
       setIsLoading(false);
     }
@@ -325,11 +329,13 @@ export const AIContentGeneratorModal: React.FC<AIContentGeneratorModalProps> = (
       status: 'ready',
       blueprint: fallbackBlueprint,
     });
+    setStoryboardSource('local');
     setVideoStudioTab('storyboard');
 
     try {
       const res = await safeFetchJson<{
         success: boolean;
+        source?: 'gemini' | 'fallback';
         blueprint?: FreeVideoMakerBlueprint;
         error?: string;
       }>('/api/ai/generate-free-video-plan', {
@@ -350,6 +356,7 @@ export const AIContentGeneratorModal: React.FC<AIContentGeneratorModalProps> = (
           status: 'ready',
           blueprint: res.data.blueprint,
         });
+        setStoryboardSource(res.data.source === 'gemini' ? 'gemini' : 'local');
       } else {
         console.warn(
           'AI storyboard unavailable; keeping the ready local storyboard.',
@@ -1347,6 +1354,18 @@ export const AIContentGeneratorModal: React.FC<AIContentGeneratorModalProps> = (
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[10px] uppercase font-mono tracking-wider text-emerald-400 font-bold block">
                             Free Production Blueprint Ready
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-mono border ${
+                              storyboardSource === 'gemini'
+                                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                                : 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                            }`}
+                            role="status"
+                          >
+                            {storyboardSource === 'gemini'
+                              ? 'Gemini AI generated'
+                              : 'Local template • AI not confirmed'}
                           </span>
                           <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 text-[10px] font-mono border border-emerald-500/30">
                             100% Free Workflow • No Paid API
