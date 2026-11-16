@@ -1082,6 +1082,7 @@ Generate a JSON output with the exact schema:
 Ensure all scenes (4 to 5 scenes) have actionable, descriptive English image prompts ready to copy-paste into free generators, clear duration (e.g. 8s, 12s), dynamic captions, smooth creative transitions, and natural spoken voiceovers in ${preferredLanguage}. Return valid JSON ONLY.`;
 
     let parsed: any = null;
+    let generationSource: "gemini" | "fallback" = "gemini";
     try {
       const rawText = await generateContentWithFallback({
         contents: storyboardPrompt,
@@ -1092,6 +1093,7 @@ Ensure all scenes (4 to 5 scenes) have actionable, descriptive English image pro
       parsed = extractAndParseJson(rawText);
     } catch (genErr: any) {
       console.warn("Gemini generation for video plan failed or returned invalid JSON, using fallback blueprint:", genErr?.message || genErr);
+      generationSource = "fallback";
       parsed = createFallbackVideoBlueprint({
         topic: topic || selectedTitle,
         selectedTitle,
@@ -1102,6 +1104,7 @@ Ensure all scenes (4 to 5 scenes) have actionable, descriptive English image pro
     }
 
     if (!parsed || !Array.isArray(parsed.scenes) || parsed.scenes.length === 0) {
+      generationSource = "fallback";
       parsed = createFallbackVideoBlueprint({
         topic: topic || selectedTitle,
         selectedTitle,
@@ -1138,6 +1141,7 @@ Ensure all scenes (4 to 5 scenes) have actionable, descriptive English image pro
 
     res.json({
       success: true,
+      source: generationSource,
       blueprint: {
         videoTitle: parsed.videoTitle || selectedTitle,
         targetDuration: parsed.targetDuration || "45-60 Seconds",
@@ -1183,6 +1187,7 @@ Ensure all scenes (4 to 5 scenes) have actionable, descriptive English image pro
     });
     res.json({
       success: true,
+      source: "fallback",
       blueprint: fallback,
     });
   }
